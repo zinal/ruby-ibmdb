@@ -9271,6 +9271,7 @@ static VALUE _ruby_ibm_db_bind_fetch_helper(ibm_db_fetch_helper_args *data)
   SQLPOINTER            out_ptr;
 
   char  *tmpStr       =  NULL;
+  char  *replStr      =  NULL;
 
   VALUE return_value  =  Qnil;
   VALUE colName       =  Qnil;
@@ -9568,6 +9569,10 @@ static VALUE _ruby_ibm_db_bind_fetch_helper(ibm_db_fetch_helper_args *data)
           strcpy(tmpStr, "BigDecimal(\'");
           strcat(tmpStr, row_data->str_val);
           strcat(tmpStr, "\')");
+          /* quickfix: replace ',' with ',' as decimal point */
+          replStr = strchr(tmpStr, ',');
+          if (replStr && *replStr)
+              *replStr = '.';
 
           if ( op & FETCH_ASSOC ) {
             rb_hash_aset(return_value, colName, rb_eval_string(tmpStr));

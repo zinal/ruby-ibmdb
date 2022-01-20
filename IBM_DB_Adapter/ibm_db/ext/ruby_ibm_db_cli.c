@@ -208,8 +208,7 @@ int _ruby_ibm_db_SQLForeignKeys_helper(metadata_args *data) {
 
   data->stmt_res->is_executing = 1;
 
-  if(!NIL_P(data->table_type))
-  {
+  if(data->table_type != NULL) {
 #ifndef UNICODE_SUPPORT_VERSION_H
   rc = SQLForeignKeys( (SQLHSTMT) data->stmt_res->hstmt, data->qualifier, data->qualifier_len,
                 data->owner, data->owner_len, NULL , SQL_NTS, NULL, SQL_NTS,
@@ -219,9 +218,7 @@ int _ruby_ibm_db_SQLForeignKeys_helper(metadata_args *data) {
                 data->owner, data->owner_len, NULL , SQL_NTS, NULL, SQL_NTS,
                 NULL, SQL_NTS, data->table_name, data->table_name_len );
 #endif
-  }
-  else
-  {
+  } else {
 #ifndef UNICODE_SUPPORT_VERSION_H
   rc = SQLForeignKeys( (SQLHSTMT) data->stmt_res->hstmt, data->qualifier, data->qualifier_len,
                 data->owner, data->owner_len, data->table_name , data->table_name_len, NULL, SQL_NTS,
@@ -586,8 +583,9 @@ int _ruby_ibm_db_SQLPutData_helper(param_cum_put_data_args *data) {
 
   data->stmt_res->is_executing = 1;
 
-  rc = SQLPutData( (SQLHSTMT) data->stmt_res->hstmt, (SQLPOINTER)(((param_node*)(data->valuePtr))->svalue), 
-           ((param_node*)(data->valuePtr))->ivalue );
+  rc = SQLPutData( (SQLHSTMT) data->stmt_res->hstmt,
+                   (SQLPOINTER)( ((param_node*)(data->valuePtr))->svalue ), 
+                   (SQLINTEGER)( ((param_node*)(data->valuePtr))->ivalue ) );
 
   data->stmt_res->is_executing = 0;
 

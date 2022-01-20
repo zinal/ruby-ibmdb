@@ -42,7 +42,6 @@ static void _ruby_ibm_db_check_sql_errors( void *conn_or_stmt, int resourceType,
 static VALUE _ruby_ibm_db_assign_options( void* handle, int type, long opt_key, VALUE data, VALUE *error );
 static void _ruby_ibm_db_clear_conn_err_cache();
 static void _ruby_ibm_db_clear_stmt_err_cache();
-static int  _ruby_ibm_db_set_decfloat_rounding_mode_client(SQLHANDLE hdbc);
 static char *_ruby_ibm_db_instance_name;
 static int  is_systemi, is_informix;        /* 1 == TRUE; 0 == FALSE; */
 static int  createDbSupported, dropDbSupported; /*1 == TRUE; 0 == FALSE*/
@@ -406,15 +405,15 @@ static void ruby_ibm_db_init_globals(struct _ibm_db_globals *ibm_db_globals)
 
 static VALUE persistent_list;
 
-char *estrdup(char *data) {
-  int len    =  strlen(data);
+char *estrdup(const char *data) {
+  size_t len =  strlen(data);
   char *dup  =  ALLOC_N(char, len+1);
   strcpy(dup, data);
   return dup;
 }
 
 #ifdef UNICODE_SUPPORT_VERSION_H
-  SQLWCHAR *esqlwchardup(SQLWCHAR *data, int len) {
+  SQLWCHAR *esqlwchardup(const SQLWCHAR *data, size_t len) {
     SQLWCHAR *dup  =  ALLOC_N(SQLWCHAR, len + 1 );
     memset(dup, '\0', (len * sizeof(SQLWCHAR)) + 2 );
     memcpy((char *)dup, (char *)data, len * sizeof(SQLWCHAR) );
@@ -422,8 +421,8 @@ char *estrdup(char *data) {
   }
 #endif
 
-char *estrndup(char *data, int max) {
-  int len = strlen(data);
+char *estrndup(const char *data, size_t max) {
+  size_t len = strlen(data);
   char *dup;
   if (len > max) {
     len = max;
@@ -433,7 +432,7 @@ char *estrndup(char *data, int max) {
   return dup;
 }
 
-void strtolower(char *data, int max) {
+void strtolower(char *data, size_t max) {
 #ifdef UNICODE_SUPPORT_VERSION_H
   rb_encoding *enc;
     
@@ -455,7 +454,7 @@ void strtolower(char *data, int max) {
   }
 }
 
-void strtoupper(char *data, int max) {
+void strtoupper(char *data, size_t max) {
 #ifdef UNICODE_SUPPORT_VERSION_H
   rb_encoding *enc;
 
@@ -1350,7 +1349,7 @@ static VALUE _ruby_ibm_db_assign_options( void *handle, int type, long opt_key, 
     memset(handleAttr_args,'\0',sizeof(struct _ibm_db_set_handle_attr_struct));
 
     handleAttr_args->handle      =  &((stmt_handle *)handle)->hstmt;
-    handleAttr_args->attribute   =  opt_key;
+    handleAttr_args->attribute   =  (SQLINTEGER) opt_key;
 
     if (TYPE(data) == T_STRING) {
 
@@ -1443,16 +1442,16 @@ static VALUE _ruby_ibm_db_assign_options( void *handle, int type, long opt_key, 
 
     handleAttr_args->handle      =  &((conn_handle*)handle)->hdbc;
     handleAttr_args->strLength   =  SQL_NTS;
-    handleAttr_args->attribute   =  opt_key;
+    handleAttr_args->attribute   =  (SQLINTEGER) opt_key;
 
     if (TYPE(data) == T_STRING) {
 #ifndef UNICODE_SUPPORT_VERSION_H
       option_str                   =  RSTRING_PTR(data);
-      handleAttr_args->strLength   =  RSTRING_LEN(data);
+      handleAttr_args->strLength   =  (SQLINTEGER) ( RSTRING_LEN(data) );
 #else
       data_utf16                   =  _ruby_ibm_db_export_str_to_utf16(data);
       option_str                   =  RSTRING_PTR(data_utf16);
-      handleAttr_args->strLength   =  RSTRING_LEN(data_utf16);
+      handleAttr_args->strLength   =  (SQLINTEGER) ( RSTRING_LEN(data_utf16) );
 #endif
 
 #ifdef PASE
@@ -1559,7 +1558,7 @@ static int _ruby_ibm_db_parse_options ( VALUE options, int type, void *handle, V
 
   if ( !NIL_P(options) ) {
     keys     =  rb_funcall(options, id_keys, 0);
-    numOpts  =  RARRAY_LEN(keys);
+    numOpts  =  (int) ( RARRAY_LEN(keys) );
 
     for ( i = 0; i < numOpts; i++) {
       key  =  rb_ary_entry(keys,i);
@@ -2271,9 +2270,9 @@ static VALUE _ruby_ibm_db_connect_helper2( connect_helper_args *data ) {
 #ifdef SQL_ATTR_DECFLOAT_ROUNDING_MODE
                                                                                          
         /**
-                    * Code for setting SQL_ATTR_DECFLOAT_ROUNDING_MODE
-                    * for implementation of Decfloat Datatype
-                    * */  
+         * Code for setting SQL_ATTR_DECFLOAT_ROUNDING_MODE
+         * for implementation of Decfloat Datatype
+         * */  
        _ruby_ibm_db_set_decfloat_rounding_mode_client( handleAttr_args, conn_res );
 
 #endif
@@ -2281,12 +2280,12 @@ static VALUE _ruby_ibm_db_connect_helper2( connect_helper_args *data ) {
       /* Get the server name */
 #ifdef UNICODE_SUPPORT_VERSION_H
       server = ALLOC_N(SQLWCHAR, 2048);
-      memset(server, 0, sizeof(server));
+      memset(server, 0, 2048 * sizeof(SQLWCHAR));
       iserver   =  _ruby_ibm_db_export_char_to_utf16_rstr("AS");
       idsserver =  _ruby_ibm_db_export_char_to_utf16_rstr("IDS");
 #else
       server = ALLOC_N(SQLCHAR, 2048);
-      memset(server, 0, sizeof(server));
+      memset(server, 0, 2048 * sizeof(SQLCHAR));
 #endif
       getInfo_args = ALLOC( get_info_args );
       memset(getInfo_args,'\0',sizeof(struct _ibm_db_get_info_struct));
@@ -2364,10 +2363,12 @@ static VALUE _ruby_ibm_db_connect_helper2( connect_helper_args *data ) {
     }
     conn_res->handle_active = 1;
   } while (0);
+  
   if( handleAttr_args != NULL ) {
     ruby_xfree( handleAttr_args );
     handleAttr_args = NULL;
   }
+  
   if (data->hKey != Qnil) 
   {
 	  //data->conn_res = conn_res;	  
@@ -2382,34 +2383,33 @@ static VALUE _ruby_ibm_db_connect_helper2( connect_helper_args *data ) {
     }
 	data->entry = entry;
   }
+  
   if ( rc < SQL_SUCCESS ) {
-    if (conn_res != NULL && conn_res->handle_active) {
-      rc = SQLFreeHandle( SQL_HANDLE_DBC, conn_res->hdbc);
-      rc = SQLFreeHandle(SQL_HANDLE_ENV, conn_res->henv );
-    }
-    /* free memory */
-    if (conn_res != NULL) {
-      conn_res->handle_active = 0;
-      _ruby_ibm_db_free_conn_struct(conn_res);
-    }
-    return Qfalse;
+      if (conn_res != NULL && conn_res->handle_active) {
+          rc = SQLFreeHandle( SQL_HANDLE_DBC, conn_res->hdbc);
+          rc = SQLFreeHandle(SQL_HANDLE_ENV, conn_res->henv );
+      }
+      /* free memory */
+      if (conn_res != NULL) {
+          conn_res->handle_active = 0;
+          _ruby_ibm_db_free_conn_struct(conn_res);
+      }
   } else if (!NIL_P(entry)) {
-	  //data->conn_res = conn_res; 
-      return entry;	
+	  //data->conn_res = conn_res;
+      /* return value is unused by the caller */
+      return entry;
   } else if (isPersistent) {
 	  //data->conn_res = conn_res;
       entry = Data_Wrap_Struct(le_pconn_struct,
-            _ruby_ibm_db_mark_pconn_struct, _ruby_ibm_db_free_pconn_struct,
-            conn_res);
-	   data->entry = entry;
+                               _ruby_ibm_db_mark_pconn_struct, _ruby_ibm_db_free_pconn_struct,
+                               conn_res);
+      data->entry = entry;
   } else {
-		data->conn_res = conn_res;		
-		/* return Data_Wrap_Struct(le_conn_struct,
-_ruby_ibm_db_mark_conn_struct, _ruby_ibm_db_free_conn_struct,
-conn_res);
-		*/
+      data->conn_res = conn_res;		
   }
   
+  /* return value is unused by the caller */
+  return Qfalse;
 }
 
 /*  */
@@ -2508,35 +2508,25 @@ static VALUE _ruby_ibm_db_connect_helper( int argc, VALUE *argv, int isPersisten
   /* Call the function where the actual logic is being run*/
   #ifdef UNICODE_SUPPORT_VERSION_H
 	ibm_Ruby_Thread_Call ( (void *)_ruby_ibm_db_connect_helper2, helper_args, RUBY_UBF_IO, NULL);	
-	
-				
-    conn_res = helper_args->conn_res;
-	
-	if(helper_args->isPersistent)
-	{
-		if(helper_args-> entry == (VALUE)0)
-		{
-			return_value = Qnil;
-		}
-		else
-		{
-			return_value = helper_args->entry;
-		}
-	}
-	else
-	{
-		if( conn_res == NULL )
-		{
-			return_value = Qnil;
-		}
-		else
-		{
-			return_value = Data_Wrap_Struct(le_conn_struct, _ruby_ibm_db_mark_conn_struct, _ruby_ibm_db_free_conn_struct, conn_res);
-		}		
-	}			 
- #else
+  #else
     return_value = _ruby_ibm_db_connect_helper2( helper_args );
- #endif
+  #endif
+
+  conn_res = helper_args->conn_res;
+	
+  if (helper_args->isPersistent) {
+      if (helper_args->entry == (VALUE)0) {
+          return_value = Qnil;
+      }	else {
+          return_value = helper_args->entry;
+      }
+  }	else {
+      if ( conn_res == NULL ) {
+          return_value = Qnil;
+      }	else {
+          return_value = Data_Wrap_Struct(le_conn_struct, _ruby_ibm_db_mark_conn_struct, _ruby_ibm_db_free_conn_struct, conn_res);
+      }		
+  }
   /* Free the memory allocated */
   if(conn_args != NULL) {
     /* Memory to structure elements of helper_args is not allocated explicitly hence it is automatically freed by Ruby.
@@ -2558,7 +2548,8 @@ static VALUE _ruby_ibm_db_connect_helper( int argc, VALUE *argv, int isPersisten
 }
 
 
-
+#ifdef CLI_DBC_SERVER_TYPE_DB2LUW
+#ifdef SQL_ATTR_DECFLOAT_ROUNDING_MODE
 
 /*Check for feasibility of moving to other file*/
 typedef struct _rounding_mode_struct {
@@ -2670,8 +2661,8 @@ static int _ruby_ibm_db_set_decfloat_rounding_mode_client_helper(_rounding_mode 
   }
   return rc;
 }
-#ifdef CLI_DBC_SERVER_TYPE_DB2LUW
-#ifdef SQL_ATTR_DECFLOAT_ROUNDING_MODE
+
+
 /**
  * Function for implementation of DECFLOAT Datatype
  * 
@@ -2683,6 +2674,7 @@ static int _ruby_ibm_db_set_decfloat_rounding_mode_client_helper(_rounding_mode 
  * same rounding mode as the server.
  * @return: success or failure
  * */
+
 static int _ruby_ibm_db_set_decfloat_rounding_mode_client( set_handle_attr_args *data, conn_handle *conn_res )
 {
     int rc = 0;
@@ -3229,7 +3221,6 @@ VALUE ibm_db_createDBNX(int argc, VALUE *argv, VALUE self)
   VALUE dbName       = Qnil;
   VALUE codeSet      = Qnil;
   VALUE mode         = Qnil;
-  VALUE return_value = Qnil;
 
   rb_scan_args(argc, argv, "22", &connection, &dbName, &codeSet, &mode);
 
@@ -3323,7 +3314,7 @@ VALUE ibm_db_autocommit(int argc, VALUE *argv, VALUE self)
       handleAttr_args = NULL;
       ret_val = Qtrue;
     } else {
-      ret_val = INT2NUM(conn_res->auto_commit);
+      ret_val = LONG2NUM(conn_res->auto_commit);
     }
   }
   if ( handleAttr_args != NULL ) {
@@ -3423,8 +3414,9 @@ static void _ruby_ibm_db_add_param_cache( stmt_handle *stmt_res, int param_no, c
   VALUE ibm_db_bind_param_helper(char * varname, long varname_len ,long param_type, long data_type, long precision, 
                                  long scale, long size, stmt_handle *stmt_res, describeparam_args *data)
 */
-VALUE ibm_db_bind_param_helper(int argc, char * varname, long varname_len ,long param_type, long data_type, 
-                            long precision, long scale, long size, stmt_handle *stmt_res, describeparam_args *data) {
+static inline
+VALUE ibm_db_bind_param_helper(int argc, char * varname, int varname_len, int param_type, int data_type, 
+                               int precision, int scale, int size, stmt_handle *stmt_res, describeparam_args *data) {
 
   int   rc            =  0;
   VALUE return_value  =  Qtrue;
@@ -3611,12 +3603,12 @@ VALUE ibm_db_bind_param(int argc, VALUE *argv, VALUE self)
 {
   char *varname   = NULL;
   long varname_len;
-  long param_type = SQL_PARAM_INPUT;
+  int param_type = SQL_PARAM_INPUT;
   /* LONG types used for data being passed in */
-  long data_type  = 0;
-  long precision  = 0;
-  long scale      = 0;
-  long size       = 0;
+  int data_type  = 0;
+  int precision  = 0;
+  int scale      = 0;
+  int size       = 0;
   describeparam_args *desc_param_args = NULL;
 
   VALUE stmt = Qnil;
@@ -3637,19 +3629,19 @@ VALUE ibm_db_bind_param(int argc, VALUE *argv, VALUE self)
 #endif
 
   if (!NIL_P(r_param_type)) {
-    param_type =  NUM2LONG(r_param_type);
+    param_type =  NUM2INT(r_param_type);
   }
   if (!NIL_P(r_data_type)) {
-    data_type  =  NUM2LONG(r_data_type);
+    data_type  =  NUM2INT(r_data_type);
   }
   if (!NIL_P(r_precision)) {
-    precision  =  NUM2LONG(r_precision);
+    precision  =  NUM2INT(r_precision);
   }
   if (!NIL_P(r_scale)) {
-    scale      =  NUM2LONG(r_scale);
+    scale      =  NUM2INT(r_scale);
   }
   if (!NIL_P(r_size)) {
-    size       =  NUM2LONG(r_size);
+    size       =  NUM2INT(r_size);
   }
 
   if (!NIL_P(stmt)) {
@@ -3666,8 +3658,9 @@ VALUE ibm_db_bind_param(int argc, VALUE *argv, VALUE self)
     desc_param_args->sql_nullable      =  SQL_NO_NULLS;
     desc_param_args->stmt_res          =  stmt_res;
 
-    return_value = ibm_db_bind_param_helper(argc,varname,varname_len,param_type,data_type,precision,
-                                              scale,size,stmt_res,desc_param_args);
+    return_value = ibm_db_bind_param_helper(argc,varname,(int)varname_len,param_type,
+                                            data_type,precision,scale,
+                                            size,stmt_res,desc_param_args);
   } else {
     rb_warn("Invalid Statement resource specified");
     return_value = Qfalse;
@@ -3754,8 +3747,8 @@ VALUE ibm_db_close(int argc, VALUE *argv, VALUE self)
       }
 
       #ifdef UNICODE_SUPPORT_VERSION_H
-	    rc = ibm_Ruby_Thread_Call ( (void *)_ruby_ibm_db_SQLDisconnect_helper, &(conn_res->hdbc),
-                       RUBY_UBF_IO, NULL);		
+        rc = (int) ibm_Ruby_Thread_Call ( (void *)_ruby_ibm_db_SQLDisconnect_helper, &(conn_res->hdbc),
+                                          RUBY_UBF_IO, NULL );		
       #else
 		rc = _ruby_ibm_db_SQLDisconnect_helper( &(conn_res->hdbc) );        
       #endif
@@ -6178,15 +6171,15 @@ static int _ruby_ibm_db_bind_parameter_helper(stmt_handle *stmt_res, param_node 
 
      if( is_binary ){
        tmp_str = (SQLCHAR *) RSTRING_PTR( *bind_data );
-       origlen = curr->ivalue = RSTRING_LEN( *bind_data );
+       origlen = (int) ( curr->ivalue = RSTRING_LEN( *bind_data ) );
      } else {
        bindData_utf16 = _ruby_ibm_db_export_str_to_utf16( *bind_data );
        tmp_str = (SQLWCHAR *) RSTRING_PTR( bindData_utf16 );
-       origlen = curr->ivalue = RSTRING_LEN( bindData_utf16 );
+       origlen = (int) ( curr->ivalue = RSTRING_LEN( bindData_utf16 ) );
      } 
 #else
       tmp_str = (SQLCHAR *) rb_str2cstr( *bind_data, (long*) &curr->ivalue );
-      origlen = curr->ivalue;
+      origlen = (int) curr->ivalue;
 #endif
       if (curr->param_type == SQL_PARAM_OUTPUT || curr->param_type == SQL_PARAM_INPUT_OUTPUT) {
         /*
@@ -6276,13 +6269,13 @@ static int _ruby_ibm_db_bind_parameter_helper(stmt_handle *stmt_res, param_node 
       switch ( curr->data_type ) {
         case SQL_CLOB:
           if ( curr->param_type == SQL_PARAM_OUTPUT ) {
-            curr->bind_indicator             =  curr->ivalue;
-            bindParameter_args->buff_length  =  curr->ivalue;
-            paramValuePtr                    =  (SQLPOINTER)curr->svalue;
+            curr->bind_indicator             =  (SQLINTEGER) curr->ivalue;
+            bindParameter_args->buff_length  =  (SQLINTEGER) curr->ivalue;
+            paramValuePtr                    =  (SQLPOINTER) curr->svalue;
           } else if (curr->param_type == SQL_PARAM_INPUT_OUTPUT) {
             curr->bind_indicator             =  origlen;
-            bindParameter_args->buff_length  =  curr->ivalue;
-            paramValuePtr                    =  (SQLPOINTER)curr->svalue;
+            bindParameter_args->buff_length  =  (SQLINTEGER) curr->ivalue;
+            paramValuePtr                    =  (SQLPOINTER) curr->svalue;
           } else {
             curr->bind_indicator = SQL_DATA_AT_EXEC;
             /* The correct dataPtr will be set during SQLPutData with the len from this struct */
@@ -6301,9 +6294,9 @@ static int _ruby_ibm_db_bind_parameter_helper(stmt_handle *stmt_res, param_node 
 
         case SQL_BLOB:
           if (curr->param_type == SQL_PARAM_OUTPUT || curr->param_type == SQL_PARAM_INPUT_OUTPUT) {
-            curr->bind_indicator             = curr->ivalue;
-            bindParameter_args->buff_length  = curr->ivalue;
-            paramValuePtr                    = (SQLPOINTER)curr->svalue;
+            curr->bind_indicator             = (SQLINTEGER) curr->ivalue;
+            bindParameter_args->buff_length  = (SQLINTEGER) curr->ivalue;
+            paramValuePtr                    = (SQLPOINTER) curr->svalue;
           } else {
             curr->bind_indicator = SQL_DATA_AT_EXEC;
 #ifndef PASE
@@ -6322,10 +6315,10 @@ static int _ruby_ibm_db_bind_parameter_helper(stmt_handle *stmt_res, param_node 
         case SQL_VARBINARY:
         case SQL_XML:
          /* account for bin_mode settings as well */
-          curr->bind_indicator             =  curr->ivalue;
+          curr->bind_indicator             =  (SQLINTEGER) curr->ivalue;
           valueType                        =  SQL_C_BINARY;
-          bindParameter_args->buff_length  =  curr->ivalue;
-          paramValuePtr                    =  (SQLPOINTER)curr->svalue;
+          bindParameter_args->buff_length  =  (SQLINTEGER) curr->ivalue;
+          paramValuePtr                    =  (SQLPOINTER) curr->svalue;
           break;
 
         /* This option should handle most other types such as DATE, VARCHAR etc */
@@ -6337,10 +6330,10 @@ static int _ruby_ibm_db_bind_parameter_helper(stmt_handle *stmt_res, param_node 
                 (curr->data_type == SQL_GRAPHIC || curr->data_type == SQL_VARGRAPHIC)){
               curr->bind_indicator             =  origlen;
             } else {
-              curr->bind_indicator             =  curr->ivalue;
+              curr->bind_indicator             =  (SQLINTEGER) curr->ivalue;
             }
           }
-          bindParameter_args->buff_length  =  curr->ivalue;
+          bindParameter_args->buff_length  =  (int) curr->ivalue;
 #ifdef UNICODE_SUPPORT_VERSION_H
           valueType = SQL_C_WCHAR;
 #else
@@ -6651,7 +6644,7 @@ static VALUE _ruby_ibm_db_desc_and_bind_param_list(stmt_bind_array *bind_array, 
     bind_array->bind_params = 1;
   }
 
-  numOpts = RARRAY_LEN(*(bind_array->parameters_array));
+  numOpts = (int) ( RARRAY_LEN(*(bind_array->parameters_array)) );
 
   if (numOpts > bind_array->num) {
     /* More are passed in -- Warning - Use the max number present */
@@ -7043,7 +7036,7 @@ VALUE ibm_db_execute(int argc, VALUE *argv, VALUE self)
                 case SQL_SMALLINT:
                 case SQL_INTEGER:
                 case SQL_BIGINT:
-                  var_assign(tmp_curr->varname, INT2NUM(tmp_curr->ivalue));
+                  var_assign(tmp_curr->varname, LONG2NUM(tmp_curr->ivalue));
                   break;
                 case SQL_REAL:
                 case SQL_FLOAT:
@@ -8042,7 +8035,7 @@ static int _ruby_ibm_db_get_column_by_name(stmt_handle *stmt_res, VALUE column, 
   }
 
   if ( TYPE(column) == T_FIXNUM ) {
-    col = FIX2LONG( column );
+      col = (int) ( FIX2LONG( column ) );
   } else if (RTEST( column )) {
 #ifdef UNICODE_SUPPORT_VERSION_H
     col_name = _ruby_ibm_db_export_str_to_utf16( column );
@@ -8384,7 +8377,7 @@ VALUE ibm_db_field_type(int argc, VALUE *argv, VALUE self)
   VALUE        stmt       =  Qnil;
   VALUE        column     =  Qnil;
   stmt_handle  *stmt_res  =  NULL;
-  char         *str_val   =  "";
+  const char   *str_val   =  "";
   int          col        =  -1;
 
   rb_scan_args(argc, argv, "2", &stmt, &column);
@@ -8833,7 +8826,7 @@ int isNullLOB(VALUE *return_value,int i,stmt_handle *stmt_res,int op)
 static VALUE _ruby_ibm_db_result_helper(ibm_db_result_args *data) {
 	
 	
-  long          col_num;
+  int           col_num;
   RETCODE       rc;
   SQLPOINTER    out_ptr;
   double        double_val;
@@ -9285,7 +9278,7 @@ static VALUE _ruby_ibm_db_bind_fetch_helper(ibm_db_fetch_helper_args *data)
   fetch_data_args *fetch_args = NULL;
 
   if (!NIL_P( data->row_number )) {
-    row_number = NUM2LONG( data->row_number );
+      row_number = (SQLLEN) NUM2INT( data->row_number );
   }
 
   stmt_res  =  data->stmt_res;
@@ -9900,10 +9893,11 @@ static VALUE _ruby_ibm_db_bind_fetch_helper(ibm_db_fetch_helper_args *data)
   data->return_value = return_value;
   return return_value;
 }
+
 /*
   static int _ruby_ibm_db_fetch_row_helper( ibm_db_fetch_helper_args *data)
 */
-static int _ruby_ibm_db_fetch_row_helper( ibm_db_fetch_helper_args *data) {
+static VALUE _ruby_ibm_db_fetch_row_helper( ibm_db_fetch_helper_args *data) {
   stmt_handle *stmt_res  = data->stmt_res;
   SQLLEN      row_number = 0;
 
@@ -9914,7 +9908,7 @@ static int _ruby_ibm_db_fetch_row_helper( ibm_db_fetch_helper_args *data) {
   fetch_data_args *fetch_args = NULL;
 
   if (!NIL_P( data->row_number )) {
-    row_number = NUM2LONG( data->row_number );
+      row_number = (SQLLEN) NUM2LONG( data->row_number );
   }
 
   /* get column header info*/
@@ -10057,10 +10051,10 @@ VALUE ibm_db_fetch_row(int argc, VALUE *argv, VALUE self)
   #ifdef UNICODE_SUPPORT_VERSION_H
 	ibm_Ruby_Thread_Call ( (void *)_ruby_ibm_db_fetch_row_helper, helper_args,
                         RUBY_UBF_IO, NULL );
-	ret_val = helper_args->return_value;
   #else
-    ret_val = _ruby_ibm_db_fetch_row_helper( helper_args );
+    _ruby_ibm_db_fetch_row_helper( helper_args );
   #endif
+  ret_val = helper_args->return_value;
 
   /*Free Memory Allocated*/
   if ( helper_args != NULL) {
@@ -10095,7 +10089,6 @@ VALUE ibm_db_fetch_row(int argc, VALUE *argv, VALUE self)
  */
 VALUE ibm_db_result_cols(int argc, VALUE *argv, VALUE self) {
   VALUE stmt             =  Qnil;
-  VALUE ret_val          =  Qnil;
 
   VALUE  error           =  Qnil;
   VALUE  colName         =  Qnil;
@@ -11218,47 +11211,41 @@ VALUE ibm_db_server_info(int argc, VALUE *argv, VALUE self)
 
   rb_scan_args(argc, argv, "1", &connection);
   
+  if (connection == (VALUE)0 || NIL_P(connection)) {
+      rb_warn("Connection object has not been passed correctly");
+      return Qfalse;
+  }
   
-  if(NIL_P(&connection))
-	{
-	}
-	if(&connection == NULL)
-	{
-	}
-
-  if (!NIL_P(connection)) {
-    Data_Get_Struct(connection, conn_handle, conn_res);
-	
-    if (!conn_res || !conn_res->handle_active) {
+  Data_Get_Struct(connection, conn_handle, conn_res);
+  
+  if (!conn_res || !conn_res->handle_active) {
       rb_warn("Connection is not active");
       return Qfalse;
-    }
-    getInfo_args = ALLOC( get_info_args );
-    memset(getInfo_args,'\0',sizeof(struct _ibm_db_get_info_struct));
-	
-    getInfo_args->conn_res     =  conn_res;
-    getInfo_args->out_length   =  NULL;
-    getInfo_args->infoType     =  0;
-    getInfo_args->infoValue    =  NULL;
-    getInfo_args->buff_length  =  0;
-    #ifdef UNICODE_SUPPORT_VERSION_H
+  }
+  getInfo_args = ALLOC( get_info_args );
+  memset(getInfo_args,'\0',sizeof(struct _ibm_db_get_info_struct));
+  
+  getInfo_args->conn_res     =  conn_res;
+  getInfo_args->out_length   =  NULL;
+  getInfo_args->infoType     =  0;
+  getInfo_args->infoValue    =  NULL;
+  getInfo_args->buff_length  =  0;
+#ifdef UNICODE_SUPPORT_VERSION_H
     //	  Thread.current.report_on_exception = Qfalse;
           ibm_Ruby_Thread_Call ( (void *)ibm_db_server_info_helper, getInfo_args,
                                 RUBY_UBF_IO, NULL);
 	  return_value  = getInfo_args->return_value;
-    #else
+#else
       return_value = ibm_db_server_info_helper( getInfo_args );
-    #endif
+#endif
 
-    /* Free Any memory Allocated*/
-    if( getInfo_args != NULL ) {
+  /* Free Any memory Allocated*/
+  if( getInfo_args != NULL ) {
       ruby_xfree( getInfo_args );
       getInfo_args = NULL;
-    }
-
-    return return_value;
   }
-  return Qnil;
+  
+  return return_value;
 }
 /*  
    Retrieves the client information by calling the SQLGetInfo_helper function and wraps it up into client_info object
